@@ -1,17 +1,16 @@
-from os import getenv
+from os import environ
 from flask import Flask, jsonify, request
 from flask.views import MethodView
 from flask_pymongo import PyMongo
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from dotenv import load_dotenv
+
+from auth import check_password, hash_password
 
 import datetime
 import json
 from typing import Type, Callable, Awaitable
-
-from auth import hash_password, check_password
 
 from aiohttp import web
 from sqlalchemy.future import select
@@ -20,11 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from models import Base, User, Token
 
-load_dotenv()
-
-# PG_DSN = getenv("PG_DSN")
-PG_DSN = "postgresql+asyncpg://celery_ht_user:celery_ht_pswd@127.0.0.1:5431/celery_ht_db"
-TOKEN_TTL = getenv("TOKEN_TTL")
+PG_DSN = environ.get("DSN", "postgresql+asyncpg://celery_ht_user:celery_ht_pswd@127.0.0.1:5431/celery_ht_db")
+TOKEN_TTL = environ.get("TOKEN_TTL", 86400)
 
 engine = create_async_engine(PG_DSN)
 
@@ -74,26 +70,6 @@ async def auth_middleware(
     return await handler(request)
 
 
-def check_owner(request: web.Request, user_id: int):
-    if not request["token"] or request["token"].user.id != user_id:
-        raise_http_error(web.HTTPForbidden, "only owner has access")
-
-
-async def login(request: web.Request):
-    login_data = await request.json()
-    query = select(User).where(User.name == login_data["name"])
-    result = await request["session"].execute(query)
-    user = result.scalar()
-    if not user or not check_password(login_data["password"], user.password):
-        raise_http_error(web.HTTPUnauthorized, "incorrect login or password")
-
-    token = Token(user=user)
-    request["session"].add(token)
-    await request["session"].commit()
-
-    return web.json_response({"token": str(token.id)})
-
-
 class IndexView(web.View):
     async def get(self):
         return web.json_response({'index_page': 'successfully'})
@@ -139,8 +115,28 @@ class UserView(web.View):
         return web.json_response({"status": "success"})
 
 
+def check_owner(request: web.Request, user_id: int):
+    if not request["token"] or request["token"].user.id != user_id:
+        raise_http_error(web.HTTPForbidden, "only owner has access")
+
+
+async def login(request: web.Request):
+    login_data = await request.json()
+    query = select(User).where(User.name == login_data["name"])
+    result = await request["session"].execute(query)
+    user = result.scalar()
+    if not user or not check_password(login_data["password"], user.password):
+        raise_http_error(web.HTTPUnauthorized, "incorrect login or password")
+
+    token = Token(user=user)
+    request["session"].add(token)
+    await request["session"].commit()
+
+    return web.json_response({"token": str(token.id)})
+
+
 async def app_context(app: web.Application):
-    print("START")
+    print("START PROCESS!")
     async with engine.begin() as conn:
         async with Session() as session:
             await session.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
@@ -148,7 +144,7 @@ async def app_context(app: web.Application):
         await conn.run_sync(Base.metadata.create_all)
     yield
     await engine.dispose()
-    print("FINISH")
+    print("FINISH PROCESS!")
 
 
 if __name__ == "__main__":
@@ -173,5 +169,4 @@ if __name__ == "__main__":
     )
 
     app.add_subapp(prefix="/users", subapp=app_auth_required)
-    # return app
     web.run_app(app, host="127.0.0.1", port=7000)

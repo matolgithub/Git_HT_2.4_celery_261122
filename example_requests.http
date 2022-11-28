@@ -38,5 +38,16 @@ Content-Type: application/json
 
 ###
 
+# создание объявления
+POST {{baseUrl}}/users/
+Content-Type: application/json
+
+{
+  "name": "user_4",
+  "password": "349l56k5lkefld",
+  "email": "88888888@888888.ru"
+}
+
+###
 
 
