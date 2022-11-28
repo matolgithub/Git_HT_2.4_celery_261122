@@ -1,10 +1,4 @@
 from os import environ
-from flask import Flask, jsonify, request
-from flask.views import MethodView
-from flask_pymongo import PyMongo
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
 
 from auth import check_password, hash_password
 
